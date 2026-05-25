@@ -131,6 +131,9 @@ function LandingPage() {
   const [galleryStudents, setGalleryStudents] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(true);
   const [galleryError, setGalleryError] = useState('');
+  const [landingActivities, setLandingActivities] = useState([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [activitiesError, setActivitiesError] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -150,6 +153,31 @@ function LandingPage() {
     }
 
     fetchGalleryStudents();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchLandingActivities() {
+      setActivitiesLoading(true);
+      setActivitiesError('');
+
+      try {
+        const data = await getActivities();
+        if (isMounted) setLandingActivities(data.slice(0, 6));
+      } catch (err) {
+        console.error('Gagal mengambil kegiatan landing:', err);
+        if (isMounted) setActivitiesError(err.message || 'Gagal mengambil kegiatan.');
+      } finally {
+        if (isMounted) setActivitiesLoading(false);
+      }
+    }
+
+    fetchLandingActivities();
 
     return () => {
       isMounted = false;
@@ -225,6 +253,34 @@ function LandingPage() {
         <div className="grid gap-5 md:grid-cols-2">
           {leadershipGroups.class.map((person) => (
             <ProfileCard key={person.id} person={person} />
+          ))}
+        </div>
+      </section>
+
+      <section className="section-shell py-10">
+        <div className="mb-6">
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-primary-700">Galeri Kegiatan</p>
+          <h2 className="mt-2 text-3xl font-black text-primary-900">Kegiatan kelas terbaru</h2>
+        </div>
+        {activitiesLoading && <p className="mb-5 rounded-2xl bg-primary-50 p-4 font-bold text-primary-900">Memuat kegiatan...</p>}
+        {activitiesError && <p className="mb-5 rounded-2xl bg-rose-100 p-4 font-bold text-rose-800">{activitiesError}</p>}
+        {!activitiesLoading && !activitiesError && !landingActivities.length && (
+          <p className="mb-5 rounded-2xl bg-primary-50 p-4 font-semibold text-slate-600">Belum ada kegiatan.</p>
+        )}
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {landingActivities.map((activity) => (
+            <article key={activity.id} className="card overflow-hidden">
+              {activity.image_url ? (
+                <img src={activity.image_url} alt={activity.title} className="h-52 w-full object-cover" />
+              ) : (
+                <div className="flex h-52 w-full items-center justify-center bg-primary-50 font-black text-primary-700">Foto Kegiatan</div>
+              )}
+              <div className="p-5">
+                <p className="text-sm font-black text-primary-700">{activity.date}</p>
+                <h3 className="mt-1 text-xl font-black text-primary-900">{activity.title}</h3>
+                <p className="mt-2 line-clamp-3 leading-7 text-slate-600">{activity.description}</p>
+              </div>
+            </article>
           ))}
         </div>
       </section>
@@ -351,8 +407,8 @@ function LoginPage({ setUser }) {
             </div>
           </Link>
           <div className="mt-20 max-w-md">
-            <p className="mb-4 inline-flex rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-lime-100">SMAN 2 CIKARANG SELATAN</p>
-            <h1 className="text-4xl font-black leading-tight">MIPA 6 Digital Class</h1>
+            <p className="mb-4 inline-flex rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-lime-100">Logo Sekolah</p>
+            <h1 className="text-4xl font-black leading-tight">XI.1 Digital Class</h1>
             <p className="mt-5 text-lg leading-8 text-teal-50">Sistem Presensi dan Informasi Kelas.</p>
           </div>
         </section>
