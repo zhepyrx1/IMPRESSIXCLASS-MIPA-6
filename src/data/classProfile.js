@@ -58,7 +58,7 @@ const roles = {
 };
 
 export const classProfile = {
-  school: 'SMA Negeri Impressix',
+  school: 'SMAN 2 CIKARANG SELATAN',
   className: 'IMPRESSIX CLASS - MIPA 6',
   shortName: 'MIPA 6',
   totalStudents: 36,
