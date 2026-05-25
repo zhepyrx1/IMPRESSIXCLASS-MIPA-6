@@ -1,7 +1,7 @@
-import principalPhoto from '../assets/profiles/principal.svg';
-import teacherPhoto from '../assets/profiles/teacher.svg';
-import leaderPhoto from '../assets/profiles/leader.svg';
-import viceLeaderPhoto from '../assets/profiles/vice-leader.svg';
+import principalPhoto from '../assets/profiles/principal.jpg';
+import teacherPhoto from '../assets/profiles/teacher.jpg';
+import leaderPhoto from '../assets/profiles/leader.jpg';
+import viceLeaderPhoto from '../assets/profiles/vice-leader.jpg';
 import studentA from '../assets/profiles/student-a.svg';
 import studentB from '../assets/profiles/student-b.svg';
 import studentC from '../assets/profiles/student-c.svg';
@@ -10,8 +10,8 @@ import studentD from '../assets/profiles/student-d.svg';
 const studentPhotos = [studentA, studentB, studentC, studentD];
 
 const names = [
-  'Harsya Al Ghiffary',
-  'Radina Putri',
+  'Alya Putri Ramadhani',
+  'Bagas Pratama',
   'Cahaya Nabila',
   'Daffa Al Farizi',
   'Elvina Zahra',

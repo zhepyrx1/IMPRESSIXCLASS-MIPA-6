@@ -25,8 +25,10 @@ import {
 import { supabase } from './lib/supabase';
 import {
   createAttendanceRecord,
+  createActivity,
   deleteAttendanceRecord,
   exportAttendanceRecords,
+  getActivities,
   getCurrentProfile,
   getStudentAttendanceRecords,
   getStudentTodayAttendance,
@@ -35,15 +37,14 @@ import {
   getTodayAttendanceRecords,
   normalizeAttendanceRecord,
   toLoggedUser,
+  updateActivity,
   uploadStudentProfilePhoto,
 } from './lib/attendanceService';
 import {
   classProfile,
   leaders,
-  students,
   leadershipGroups,
 } from './data/classProfile';
-import { activities } from './data/activities';
 
 const today = new Date().toISOString().slice(0, 10);
 const qrLifetimeSeconds = 120;
@@ -128,16 +129,23 @@ function PageHeader({ eyebrow, title, description, action }) {
 
 function LandingPage() {
   const [galleryStudents, setGalleryStudents] = useState([]);
+  const [galleryLoading, setGalleryLoading] = useState(true);
+  const [galleryError, setGalleryError] = useState('');
 
   useEffect(() => {
     let isMounted = true;
 
     async function fetchGalleryStudents() {
+      setGalleryLoading(true);
+      setGalleryError('');
       try {
         const data = await getStudents();
         if (isMounted) setGalleryStudents(data);
       } catch (err) {
         console.error('Gagal mengambil galeri siswa:', err);
+        if (isMounted) setGalleryError(err.message || 'Gagal mengambil galeri siswa.');
+      } finally {
+        if (isMounted) setGalleryLoading(false);
       }
     }
 
@@ -147,8 +155,6 @@ function LandingPage() {
       isMounted = false;
     };
   }, []);
-
-  const displayedStudents = galleryStudents.length ? galleryStudents : students;
 
   return (
     <main className="min-h-screen bg-mint bg-grid bg-[length:28px_28px]">
@@ -187,7 +193,7 @@ function LandingPage() {
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
             {[
               ['Sekolah', classProfile.school],
-              ['Jumlah Siswa', `${displayedStudents.length} siswa`],
+              ['Jumlah Siswa', `${galleryStudents.length} siswa`],
               ['Slogan', classProfile.slogan],
             ].map(([label, value]) => (
               <div key={label} className="glass rounded-3xl p-5">
@@ -226,12 +232,17 @@ function LandingPage() {
       <section id="galeri-siswa" className="section-shell py-10 pb-20">
         <div className="mb-6">
           <p className="text-sm font-black uppercase tracking-[0.22em] text-primary-700">Galeri Siswa</p>
-          <h2 className="mt-2 text-3xl font-black text-primary-900">{displayedStudents.length} profil siswa MIPA 6</h2>
+          <h2 className="mt-2 text-3xl font-black text-primary-900">{galleryStudents.length} profil siswa MIPA 6</h2>
         </div>
+        {galleryLoading && <p className="mb-5 rounded-2xl bg-primary-50 p-4 font-bold text-primary-900">Memuat galeri siswa...</p>}
+        {galleryError && <p className="mb-5 rounded-2xl bg-rose-100 p-4 font-bold text-rose-800">{galleryError}</p>}
+        {!galleryLoading && !galleryError && !galleryStudents.length && (
+          <p className="mb-5 rounded-2xl bg-primary-50 p-4 font-semibold text-slate-600">Belum ada data siswa.</p>
+        )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {displayedStudents.map((student) => (
+          {galleryStudents.map((student) => (
             <article key={student.id} className="card overflow-hidden p-4">
-              <img src={student.photo_url} alt={student.name} className="aspect-square w-full rounded-[1.5rem] bg-primary-50 object-cover" />
+              <Avatar src={student.photo_url} name={student.name} className="aspect-square h-auto w-full rounded-[1.5rem]" />
               <div className="pt-4">
                 <p className="text-sm font-black text-primary-700">No. Absen {student.no_absen}</p>
                 <h3 className="mt-1 text-lg font-black text-primary-900">{student.name}</h3>
@@ -450,6 +461,8 @@ function Shell({ role, onLogout, children }) {
 function TeacherDashboard({ user }) {
   const [pendingRequests, setPendingRequests] = useState([]);
   const [todayRecords, setTodayRecords] = useState([]);
+  const [studentCount, setStudentCount] = useState(0);
+  const [activityCount, setActivityCount] = useState(0);
   const [attendanceError, setAttendanceError] = useState('');
   const [attendanceLoading, setAttendanceLoading] = useState(true);
 
@@ -494,6 +507,8 @@ function TeacherDashboard({ user }) {
 
     fetchPendingRequests();
     fetchTodayRecords();
+    getStudents().then((data) => setStudentCount(data.length)).catch((err) => console.error('Gagal mengambil jumlah siswa:', err));
+    getActivities().then((data) => setActivityCount(data.length)).catch((err) => console.error('Gagal mengambil jumlah kegiatan:', err));
 
     if (!supabase) return undefined;
     const channel = supabase
@@ -520,10 +535,10 @@ function TeacherDashboard({ user }) {
         <p className="mt-1 font-semibold text-slate-500">Role: {user.role}</p>
       </div>
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <StatPill icon={UsersRound} label="Jumlah Siswa" value={students.length} />
+        <StatPill icon={UsersRound} label="Jumlah Siswa" value={studentCount} />
         <StatPill icon={CheckCircle2} label="Hadir Hari Ini" value={todayRecords.length} />
         <StatPill icon={Clock3} label="Menunggu Verifikasi" value={pendingRequests.length} />
-        <StatPill icon={Activity} label="Jumlah Kegiatan" value={activities.length} />
+        <StatPill icon={Activity} label="Jumlah Kegiatan" value={activityCount} />
       </div>
       <div className="mt-8 grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
         <div className="card p-6">
@@ -855,18 +870,138 @@ function VerificationPage({ user }) {
   );
 }
 
-function ActivitiesPage() {
+function ActivitiesPage({ user }) {
+  const emptyForm = { title: '', date: today, description: '', file: null };
+  const [activityRows, setActivityRows] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const canManageActivities = user?.role === 'student';
+
+  async function fetchActivities() {
+    setError('');
+    try {
+      const data = await getActivities();
+      setActivityRows(data);
+    } catch (err) {
+      console.error('Gagal mengambil kegiatan:', err);
+      setError(err.message || 'Gagal mengambil kegiatan.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchActivities();
+
+    if (!supabase) return undefined;
+    const channel = supabase
+      .channel('activities-page')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, fetchActivities)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  function startEdit(activity) {
+    setEditingId(activity.id);
+    setForm({
+      title: activity.title,
+      date: activity.date,
+      description: activity.description,
+      file: null,
+    });
+    setMessage('');
+    setError('');
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setForm(emptyForm);
+  }
+
+  async function handleActivitySubmit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    setMessage('');
+
+    try {
+      if (editingId) {
+        await updateActivity(editingId, form);
+        setMessage('Kegiatan berhasil diperbarui.');
+      } else {
+        await createActivity(form);
+        setMessage('Kegiatan berhasil ditambahkan.');
+      }
+      resetForm();
+      await fetchActivities();
+    } catch (err) {
+      console.error('Gagal menyimpan kegiatan:', err);
+      setError(err.message || 'Gagal menyimpan kegiatan.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
       <PageHeader eyebrow="Galeri Kegiatan" title="Dokumentasi kelas" description="Kegiatan kelas disajikan dalam card visual yang rapi dan ramah untuk siswa." />
+      {canManageActivities && (
+        <form onSubmit={handleActivitySubmit} className="card mb-6 p-6">
+          <h2 className="text-2xl font-black text-primary-900">{editingId ? 'Edit kegiatan' : 'Tambah kegiatan'}</h2>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 font-bold text-primary-900">
+              Judul kegiatan
+              <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 outline-none focus:border-primary-500" />
+            </label>
+            <label className="grid gap-2 font-bold text-primary-900">
+              Tanggal kegiatan
+              <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className="rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 outline-none focus:border-primary-500" />
+            </label>
+            <label className="grid gap-2 font-bold text-primary-900 md:col-span-2">
+              Deskripsi kegiatan
+              <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows="4" className="rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 outline-none focus:border-primary-500" />
+            </label>
+            <label className="grid gap-2 font-bold text-primary-900 md:col-span-2">
+              Upload foto kegiatan
+              <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(event) => setForm({ ...form, file: event.target.files?.[0] || null })} className="rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3" />
+            </label>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button disabled={saving} className="rounded-full bg-primary-900 px-6 py-3 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
+              {saving ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Tambah Kegiatan'}
+            </button>
+            {editingId && <button type="button" onClick={resetForm} className="rounded-full bg-primary-50 px-6 py-3 font-black text-primary-900">Batal</button>}
+          </div>
+        </form>
+      )}
+      {message && <p className="mb-5 rounded-2xl bg-lime-100 p-4 font-bold text-primary-900">{message}</p>}
+      {error && <p className="mb-5 rounded-2xl bg-rose-100 p-4 font-bold text-rose-800">{error}</p>}
+      {loading && <p className="mb-5 rounded-2xl bg-primary-50 p-4 font-bold text-primary-900">Memuat kegiatan...</p>}
+      {!loading && !error && !activityRows.length && <p className="mb-5 rounded-2xl bg-primary-50 p-4 font-semibold text-slate-600">Belum ada kegiatan.</p>}
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {activities.map((activity) => (
+        {activityRows.map((activity) => (
           <article key={activity.id} className="card overflow-hidden">
-            <img src={activity.image_url} alt={activity.title} className="h-52 w-full object-cover" />
+            {activity.image_url ? (
+              <img src={activity.image_url} alt={activity.title} className="h-52 w-full object-cover" />
+            ) : (
+              <div className="flex h-52 w-full items-center justify-center bg-primary-50 font-black text-primary-700">Foto Kegiatan</div>
+            )}
             <div className="p-5">
               <p className="text-sm font-black text-primary-700">{activity.date}</p>
               <h3 className="mt-1 text-xl font-black text-primary-900">{activity.title}</h3>
               <p className="mt-2 leading-7 text-slate-600">{activity.description}</p>
+              {canManageActivities && (
+                <button onClick={() => startEdit(activity)} className="mt-4 rounded-full bg-primary-900 px-5 py-2.5 font-black text-white">
+                  Edit
+                </button>
+              )}
             </div>
           </article>
         ))}
@@ -1405,13 +1540,13 @@ export default function App() {
       <Route path="/guru/data-siswa" element={teacherShell(<StudentsPage />)} />
       <Route path="/guru/qr-presensi" element={teacherShell(<QrAttendancePage activeSession={activeSession} setActiveSession={setActiveSession} user={user} />)} />
       <Route path="/guru/verifikasi" element={teacherShell(<VerificationPage user={user} />)} />
-      <Route path="/guru/kegiatan" element={teacherShell(<ActivitiesPage />)} />
+      <Route path="/guru/kegiatan" element={teacherShell(<ActivitiesPage user={user} />)} />
       <Route path="/guru/rekap" element={teacherShell(<RecapPage user={user} />)} />
       <Route path="/siswa" element={studentShell(<StudentDashboard user={user} setUser={setUser} />)} />
       <Route path="/siswa/profil-kelas" element={studentShell(<ProfileClassPage />)} />
       <Route path="/siswa/scan" element={studentShell(<ScanPage activeSession={activeSession} user={user} />)} />
       <Route path="/siswa/izin" element={studentShell(<AbsenceFormPage user={user} />)} />
-      <Route path="/siswa/kegiatan" element={studentShell(<ActivitiesPage />)} />
+      <Route path="/siswa/kegiatan" element={studentShell(<ActivitiesPage user={user} />)} />
       <Route path="/siswa/riwayat" element={studentShell(<RecapPage mode="student" title="Riwayat presensi pribadi" user={user} />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

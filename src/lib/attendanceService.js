@@ -71,22 +71,28 @@ export async function getStudents() {
   return data || [];
 }
 
-export async function uploadStudentProfilePhoto(file, profile) {
-  const client = requireSupabase();
+function validateImageFile(file, maxSizeMb) {
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  const maxSize = 2 * 1024 * 1024;
-
   if (!file) throw new Error('File foto wajib dipilih.');
   if (!allowedTypes.includes(file.type)) throw new Error('File harus berupa jpg, jpeg, png, atau webp.');
-  if (file.size > maxSize) throw new Error('Ukuran file maksimal 2 MB.');
+  if (file.size > maxSizeMb * 1024 * 1024) throw new Error(`Ukuran file maksimal ${maxSizeMb} MB.`);
+}
+
+function getSafeImageExtension(file) {
+  const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  return extension === 'jpeg' ? 'jpg' : extension;
+}
+
+export async function uploadStudentProfilePhoto(file, profile) {
+  const client = requireSupabase();
+  validateImageFile(file, 2);
   if (profile.role !== 'student') throw new Error('Upload foto hanya tersedia untuk siswa.');
   if (!profile.student_id || !profile.students?.id) throw new Error('Data siswa belum terhubung dengan akun ini.');
   if (profile.photo_url || profile.students?.photo_url) {
     throw new Error('Foto profil sudah diunggah dan tidak dapat diubah kembali.');
   }
 
-  const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const safeExtension = extension === 'jpeg' ? 'jpg' : extension;
+  const safeExtension = getSafeImageExtension(file);
   const path = `${profile.student_id}-${Date.now()}.${safeExtension}`;
 
   const { error: uploadError } = await client.storage
@@ -116,6 +122,86 @@ export async function uploadStudentProfilePhoto(file, profile) {
   if (studentError) throw studentError;
 
   return publicUrl;
+}
+
+async function uploadActivityPhoto(file) {
+  const client = requireSupabase();
+  validateImageFile(file, 3);
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData.user?.id;
+  if (!userId) throw new Error('Session pengguna tidak ditemukan.');
+
+  const path = `${userId}-${Date.now()}.${getSafeImageExtension(file)}`;
+  const { error } = await client.storage
+    .from('activity-photos')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type,
+    });
+
+  if (error) throw error;
+  const { data } = client.storage.from('activity-photos').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export async function getActivities() {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from(TABLES.activities)
+    .select('id, title, date, description, image_url, created_at')
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createActivity({ title, date, description, file }) {
+  const client = requireSupabase();
+  if (!title?.trim()) throw new Error('Judul kegiatan wajib diisi.');
+  if (!date) throw new Error('Tanggal kegiatan wajib diisi.');
+  if (!description?.trim()) throw new Error('Deskripsi kegiatan wajib diisi.');
+  const imageUrl = await uploadActivityPhoto(file);
+
+  const { data, error } = await client
+    .from(TABLES.activities)
+    .insert({
+      title: title.trim(),
+      date,
+      description: description.trim(),
+      image_url: imageUrl,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateActivity(activityId, { title, date, description, file }) {
+  const client = requireSupabase();
+  if (!title?.trim()) throw new Error('Judul kegiatan wajib diisi.');
+  if (!date) throw new Error('Tanggal kegiatan wajib diisi.');
+  if (!description?.trim()) throw new Error('Deskripsi kegiatan wajib diisi.');
+
+  const payload = {
+    title: title.trim(),
+    date,
+    description: description.trim(),
+  };
+
+  if (file) {
+    payload.image_url = await uploadActivityPhoto(file);
+  }
+
+  const { data, error } = await client
+    .from(TABLES.activities)
+    .update(payload)
+    .eq('id', activityId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function signInWithPassword(email, password) {
