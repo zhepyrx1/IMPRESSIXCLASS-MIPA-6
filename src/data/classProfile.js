@@ -86,13 +86,13 @@ export const leaders = [
   {
     id: 'principal',
     label: 'Kepala Sekolah',
-    name: 'Drs. Hendra Wijaya, M.Pd.',
+    name: 'Sadikin, S.pd., M.Pd..',
     photo_url: principalPhoto,
     description: 'Mendukung transformasi digital kelas melalui tata kelola sekolah yang modern dan terarah.',
   },
   {
     id: 'teacher',
-    label: 'Wali Kelas',
+    label: 'Eki Septiana, S.Pd.',
     name: 'Wali Kelas MIPA 6',
     photo_url: teacherPhoto,
     description: 'Mendampingi siswa MIPA 6 dalam pembelajaran, kedisiplinan, dan pengembangan karakter.',
@@ -100,14 +100,14 @@ export const leaders = [
   {
     id: 'leader',
     label: 'Ketua Kelas',
-    name: 'Alya Putri Ramadhani',
+    name: 'Harsya Al Ghiffary',
     photo_url: leaderPhoto,
     description: 'Mengkoordinasikan kegiatan kelas dan menjadi penghubung antara siswa dan wali kelas.',
   },
   {
     id: 'vice-leader',
     label: 'Wakil Ketua Kelas',
-    name: 'Bagas Pratama',
+    name: 'Radina',
     photo_url: viceLeaderPhoto,
     description: 'Membantu koordinasi kelas, agenda harian, dan kelancaran kegiatan siswa.',
   },
