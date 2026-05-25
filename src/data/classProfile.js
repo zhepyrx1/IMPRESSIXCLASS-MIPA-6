@@ -92,8 +92,8 @@ export const leaders = [
   },
   {
     id: 'teacher',
-    label: 'Eki Septiana, S.Pd.',
-    name: 'Wali Kelas MIPA 6',
+    label: 'Wali Kelas MIPA 6',
+    name: 'Eki Septiana, S.Pd.',
     photo_url: teacherPhoto,
     description: 'Mendampingi siswa MIPA 6 dalam pembelajaran, kedisiplinan, dan pengembangan karakter.',
   },
