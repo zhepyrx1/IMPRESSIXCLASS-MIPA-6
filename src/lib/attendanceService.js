@@ -31,6 +31,93 @@ const attendanceSelect = `
   )
 `;
 
+export function toLoggedUser(profile) {
+  return {
+    id: profile.id,
+    user_id: profile.user_id,
+    name: profile.role === 'student' ? profile.students?.name || profile.name : profile.name,
+    email: profile.email,
+    role: profile.role,
+    photo_url: profile.photo_url || null,
+    student_id: profile.role === 'student' ? profile.student_id : null,
+    student: profile.role === 'student' ? profile.students : null,
+  };
+}
+
+export async function getCurrentProfile() {
+  const client = requireSupabase();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData.user?.id;
+  if (!userId) throw new Error('Session pengguna tidak ditemukan.');
+
+  const { data: profile, error } = await client
+    .from(TABLES.profiles)
+    .select('*, students(*)')
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !profile) throw new Error('Profil pengguna tidak ditemukan atau role belum diatur.');
+  return profile;
+}
+
+export async function getStudents() {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from(TABLES.students)
+    .select('id, no_absen, name, class_name, role_in_class, email, photo_url, created_at')
+    .order('no_absen', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function uploadStudentProfilePhoto(file, profile) {
+  const client = requireSupabase();
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  const maxSize = 2 * 1024 * 1024;
+
+  if (!file) throw new Error('File foto wajib dipilih.');
+  if (!allowedTypes.includes(file.type)) throw new Error('File harus berupa jpg, jpeg, png, atau webp.');
+  if (file.size > maxSize) throw new Error('Ukuran file maksimal 2 MB.');
+  if (profile.role !== 'student') throw new Error('Upload foto hanya tersedia untuk siswa.');
+  if (!profile.student_id || !profile.students?.id) throw new Error('Data siswa belum terhubung dengan akun ini.');
+  if (profile.photo_url || profile.students?.photo_url) {
+    throw new Error('Foto profil sudah diunggah dan tidak dapat diubah kembali.');
+  }
+
+  const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const safeExtension = extension === 'jpeg' ? 'jpg' : extension;
+  const path = `${profile.student_id}-${Date.now()}.${safeExtension}`;
+
+  const { error: uploadError } = await client.storage
+    .from('student-photos')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data: publicData } = client.storage.from('student-photos').getPublicUrl(path);
+  const publicUrl = publicData.publicUrl;
+
+  const { error: profileError } = await client
+    .from(TABLES.profiles)
+    .update({ photo_url: publicUrl })
+    .eq('id', profile.id)
+    .eq('user_id', profile.user_id);
+  if (profileError) throw profileError;
+
+  const { error: studentError } = await client
+    .from(TABLES.students)
+    .update({ photo_url: publicUrl })
+    .eq('id', profile.student_id);
+  if (studentError) throw studentError;
+
+  return publicUrl;
+}
+
 export async function signInWithPassword(email, password) {
   const client = requireSupabase();
   const { data, error } = await client.auth.signInWithPassword({ email, password });

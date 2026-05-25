@@ -12,6 +12,7 @@ import {
   FileCheck2,
   GalleryHorizontalEnd,
   GraduationCap,
+  ImagePlus,
   Download,
   LayoutDashboard,
   LogOut,
@@ -26,11 +27,15 @@ import {
   createAttendanceRecord,
   deleteAttendanceRecord,
   exportAttendanceRecords,
+  getCurrentProfile,
   getStudentAttendanceRecords,
   getStudentTodayAttendance,
+  getStudents,
   getTeacherAttendanceRecords,
   getTodayAttendanceRecords,
   normalizeAttendanceRecord,
+  toLoggedUser,
+  uploadStudentProfilePhoto,
 } from './lib/attendanceService';
 import {
   classProfile,
@@ -83,15 +88,7 @@ async function getLoggedUserFromProfile(userId) {
     throw new Error('Data siswa tidak ditemukan.');
   }
 
-  return {
-    id: profile.id,
-    user_id: profile.user_id,
-    name: profile.students?.name || profile.name,
-    email: profile.email,
-    role: profile.role,
-    student_id: profile.role === 'student' ? profile.student_id : null,
-    student: profile.role === 'student' ? profile.students : null,
-  };
+  return toLoggedUser(profile);
 }
 
 function StatPill({ icon: Icon, label, value }) {
@@ -130,6 +127,29 @@ function PageHeader({ eyebrow, title, description, action }) {
 }
 
 function LandingPage() {
+  const [galleryStudents, setGalleryStudents] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchGalleryStudents() {
+      try {
+        const data = await getStudents();
+        if (isMounted) setGalleryStudents(data);
+      } catch (err) {
+        console.error('Gagal mengambil galeri siswa:', err);
+      }
+    }
+
+    fetchGalleryStudents();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const displayedStudents = galleryStudents.length ? galleryStudents : students;
+
   return (
     <main className="min-h-screen bg-mint bg-grid bg-[length:28px_28px]">
       <header className="section-shell flex items-center justify-between py-5">
@@ -167,7 +187,7 @@ function LandingPage() {
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
             {[
               ['Sekolah', classProfile.school],
-              ['Jumlah Siswa', `${students.length} siswa`],
+              ['Jumlah Siswa', `${displayedStudents.length} siswa`],
               ['Slogan', classProfile.slogan],
             ].map(([label, value]) => (
               <div key={label} className="glass rounded-3xl p-5">
@@ -206,16 +226,16 @@ function LandingPage() {
       <section id="galeri-siswa" className="section-shell py-10 pb-20">
         <div className="mb-6">
           <p className="text-sm font-black uppercase tracking-[0.22em] text-primary-700">Galeri Siswa</p>
-          <h2 className="mt-2 text-3xl font-black text-primary-900">36 profil siswa MIPA 6</h2>
+          <h2 className="mt-2 text-3xl font-black text-primary-900">{displayedStudents.length} profil siswa MIPA 6</h2>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {students.map((student) => (
+          {displayedStudents.map((student) => (
             <article key={student.id} className="card overflow-hidden p-4">
               <img src={student.photo_url} alt={student.name} className="aspect-square w-full rounded-[1.5rem] bg-primary-50 object-cover" />
               <div className="pt-4">
                 <p className="text-sm font-black text-primary-700">No. Absen {student.no_absen}</p>
                 <h3 className="mt-1 text-lg font-black text-primary-900">{student.name}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{student.description}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{student.description || `${student.role_in_class || 'Anggota kelas'} MIPA 6.`}</p>
               </div>
             </article>
           ))}
@@ -594,13 +614,8 @@ function StudentsPage() {
       try {
         if (!supabase) throw new Error('Supabase belum dikonfigurasi.');
 
-        const { data, error: fetchError } = await supabase
-          .from('students')
-          .select('id, no_absen, name, class_name, role_in_class, email, photo_url')
-          .order('no_absen', { ascending: true });
-
-        if (fetchError) throw fetchError;
-        if (isMounted) setStudentRows(data || []);
+        const data = await getStudents();
+        if (isMounted) setStudentRows(data);
       } catch (err) {
         console.error('Gagal mengambil data siswa:', err);
         if (isMounted) setError(err.message || 'Gagal mengambil data siswa.');
@@ -980,12 +995,17 @@ function RecapPage({ user, mode = 'teacher', title = 'Data kehadiran kelas' }) {
   );
 }
 
-function StudentDashboard({ user }) {
+function StudentDashboard({ user, setUser }) {
   const student = user.student;
   const [myRecords, setMyRecords] = useState([]);
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [photoMessage, setPhotoMessage] = useState('');
+  const [photoError, setPhotoError] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const profilePhotoUrl = user.photo_url || student.photo_url;
+  const canUploadPhoto = !profilePhotoUrl;
 
   async function fetchStudentAttendance() {
     setError('');
@@ -1018,17 +1038,68 @@ function StudentDashboard({ user }) {
     };
   }, [student.id]);
 
+  async function handlePhotoUpload(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setPhotoMessage('');
+    setPhotoError('');
+    setPhotoUploading(true);
+
+    try {
+      const profile = await getCurrentProfile();
+      const publicUrl = await uploadStudentProfilePhoto(file, profile);
+      const refreshedProfile = await getCurrentProfile();
+      const refreshedUser = toLoggedUser(refreshedProfile);
+      localStorage.setItem('impressix-user', JSON.stringify(refreshedUser));
+      setUser(refreshedUser);
+      setPhotoMessage('Foto profil berhasil diunggah.');
+      if (!refreshedUser.student?.photo_url && publicUrl) {
+        setUser((current) => ({
+          ...current,
+          photo_url: publicUrl,
+          student: { ...current.student, photo_url: publicUrl },
+        }));
+      }
+    } catch (err) {
+      console.error('Gagal upload foto profil:', err);
+      setPhotoError(err.message || 'Gagal upload foto profil.');
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
   return (
     <>
       <PageHeader eyebrow="Dashboard Siswa" title={`Halo, ${student.name}`} description="Kelola presensi pribadi, ajukan izin dari rumah, dan lihat kegiatan kelas." />
       <div className="grid gap-5 lg:grid-cols-[.85fr_1.15fr]">
         <div className="card p-6">
-          <Avatar src={student.photo_url} name={student.name} className="h-28 w-28" />
+          <Avatar src={profilePhotoUrl} name={student.name} className="h-28 w-28" />
           <h2 className="mt-5 text-2xl font-black text-primary-900">{student.name}</h2>
           <p className="mt-1 font-semibold text-slate-500">No. {student.no_absen} - {student.class_name}</p>
           <p className="font-semibold text-slate-500">{student.role_in_class}</p>
           <p className="mt-1 font-semibold text-slate-500">{student.email || user.email}</p>
           <p className="mt-1 font-semibold text-slate-500">Role akun: {user.role}</p>
+          <div className="mt-5 rounded-3xl bg-primary-50 p-4">
+            {canUploadPhoto ? (
+              <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-primary-900 px-5 py-3 font-black text-white transition hover:bg-primary-800">
+                <ImagePlus size={18} />
+                {photoUploading ? 'Mengunggah...' : 'Upload Foto Profil'}
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  disabled={photoUploading}
+                  onChange={handlePhotoUpload}
+                />
+              </label>
+            ) : (
+              <p className="font-bold text-primary-900">Foto profil sudah diunggah dan tidak dapat diubah kembali.</p>
+            )}
+            {photoMessage && <p className="mt-3 rounded-2xl bg-lime-100 p-3 text-sm font-bold text-primary-900">{photoMessage}</p>}
+            {photoError && <p className="mt-3 rounded-2xl bg-rose-100 p-3 text-sm font-bold text-rose-800">{photoError}</p>}
+          </div>
           {todayAttendance ? (
             <div className="mt-6 rounded-3xl bg-lime-100 p-4 font-black text-primary-900">
               Sudah presensi hari ini: {todayAttendance.status}
@@ -1336,7 +1407,7 @@ export default function App() {
       <Route path="/guru/verifikasi" element={teacherShell(<VerificationPage user={user} />)} />
       <Route path="/guru/kegiatan" element={teacherShell(<ActivitiesPage />)} />
       <Route path="/guru/rekap" element={teacherShell(<RecapPage user={user} />)} />
-      <Route path="/siswa" element={studentShell(<StudentDashboard user={user} />)} />
+      <Route path="/siswa" element={studentShell(<StudentDashboard user={user} setUser={setUser} />)} />
       <Route path="/siswa/profil-kelas" element={studentShell(<ProfileClassPage />)} />
       <Route path="/siswa/scan" element={studentShell(<ScanPage activeSession={activeSession} user={user} />)} />
       <Route path="/siswa/izin" element={studentShell(<AbsenceFormPage user={user} />)} />

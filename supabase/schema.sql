@@ -1,5 +1,9 @@
 create extension if not exists "pgcrypto";
 
+insert into storage.buckets (id, name, public)
+values ('student-photos', 'student-photos', true)
+on conflict (id) do update set public = true;
+
 create table if not exists public.students (
   id uuid primary key default gen_random_uuid(),
   no_absen int not null,
@@ -101,6 +105,8 @@ begin
   end if;
 end $$;
 
+grant execute on function public.current_profile_role() to authenticated;
+
 alter table public.absence_requests drop constraint if exists absence_requests_status_check;
 alter table public.absence_requests drop constraint if exists absence_requests_approval_status_check;
 alter table public.absence_requests drop constraint if exists absence_requests_student_id_date_key;
@@ -135,10 +141,19 @@ for select
 to authenticated
 using (
   user_id = auth.uid()
-  or exists (
-    select 1 from public.profiles
-    where user_id = auth.uid() and role = 'teacher'
-  )
+  or public.current_profile_role() = 'teacher'
+);
+
+drop policy if exists "Students can update own profile photo once" on public.profiles;
+create policy "Students can update own profile photo once"
+on public.profiles
+for update
+to authenticated
+using (
+  user_id = auth.uid()
+)
+with check (
+  user_id = auth.uid()
 );
 
 drop policy if exists "students_read_authenticated" on public.students;
@@ -149,12 +164,7 @@ on public.students
 for select
 to authenticated
 using (
-  exists (
-    select 1
-    from public.profiles
-    where user_id = auth.uid()
-      and role = 'teacher'
-  )
+  public.current_profile_role() = 'teacher'
 );
 
 drop policy if exists "Students can read own student data" on public.students;
@@ -169,6 +179,46 @@ using (
     where user_id = auth.uid()
       and role = 'student'
   )
+);
+
+drop policy if exists "Students can update own student photo once" on public.students;
+create policy "Students can update own student photo once"
+on public.students
+for update
+to authenticated
+using (
+  id in (
+    select student_id
+    from public.profiles
+    where user_id = auth.uid()
+      and role = 'student'
+  )
+)
+with check (
+  id in (
+    select student_id
+    from public.profiles
+    where user_id = auth.uid()
+      and role = 'student'
+  )
+);
+
+drop policy if exists "Students can upload own photo" on storage.objects;
+create policy "Students can upload own photo"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'student-photos'
+);
+
+drop policy if exists "Anyone can read student photos" on storage.objects;
+create policy "Anyone can read student photos"
+on storage.objects
+for select
+to public
+using (
+  bucket_id = 'student-photos'
 );
 
 drop policy if exists "sessions_staff_write" on public.attendance_sessions;

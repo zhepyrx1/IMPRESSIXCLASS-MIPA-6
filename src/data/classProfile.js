@@ -10,8 +10,8 @@ import studentD from '../assets/profiles/student-d.svg';
 const studentPhotos = [studentA, studentB, studentC, studentD];
 
 const names = [
-  'Alya Putri Ramadhani',
-  'Bagas Pratama',
+  'Harsya Al Ghiffary',
+  'Radina Putri',
   'Cahaya Nabila',
   'Daffa Al Farizi',
   'Elvina Zahra',
