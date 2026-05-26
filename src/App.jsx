@@ -408,7 +408,7 @@ function LoginPage({ setUser }) {
           </Link>
           <div className="mt-20 max-w-md">
             <p className="mb-4 inline-flex rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-lime-100">Logo Sekolah</p>
-            <h1 className="text-4xl font-black leading-tight">XI.1 Digital Class</h1>
+            <h1 className="text-4xl font-black leading-tight">XI MIPA 6 Digital Class</h1>
             <p className="mt-5 text-lg leading-8 text-teal-50">Sistem Presensi dan Informasi Kelas.</p>
           </div>
         </section>
