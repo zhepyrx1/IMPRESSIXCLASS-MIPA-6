@@ -107,7 +107,7 @@ export const leaders = [
   {
     id: 'vice-leader',
     label: 'Wakil Ketua Kelas',
-    name: 'Radina',
+    name: 'Radina Putri Wulandari',
     photo_url: viceLeaderPhoto,
     description: 'Membantu koordinasi kelas, agenda harian, dan kelancaran kegiatan siswa.',
   },
